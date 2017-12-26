@@ -16,11 +16,12 @@ import (
 
 const (
     BaseUrl = "https://www.zoom.com.br/"
-    Timeout = time.Duration(500) * time.Second
 )
 
 var (
     Debug = flag.Bool("debug", false, "enable debugging information.")
+    Timeout = flag.Int("timeout", 1000, "request timeout.")
+    Delay = flag.Int("delay", 60, "request delay.")
 )
 
 func formatUrl(str string) (string, error) {
@@ -38,6 +39,16 @@ func formatUrl(str string) (string, error) {
     return u2.Path, nil
 }
 
+func contains(leads []Lead, lead Lead) bool {
+    for _, l := range leads {
+        if (lead.Name == l.Name) {
+            return true
+        }
+    }
+
+    return false
+}
+
 type Lead struct {
     Name string
     Email string
@@ -51,7 +62,12 @@ func (l Lead) Print() {
 
 func main() {
     flag.Parse()
+
     var merchantName string
+    leads := make([]Lead, 0)
+    timeout := time.Duration(*Timeout) * time.Second
+    delay := time.Duration(*Delay) * time.Second
+
     c := colly.NewCollector()
     m := colly.NewCollector()
     d := colly.NewCollector()
@@ -59,6 +75,22 @@ func main() {
 
     m.Limit(&colly.LimitRule{
         Parallelism: 100,
+        Delay: delay,
+    })
+
+    d.Limit(&colly.LimitRule{
+        Parallelism: 100,
+        Delay: delay,
+    })
+
+    l.Limit(&colly.LimitRule{
+        Parallelism: 100,
+        Delay: delay,
+    })
+
+    c.Limit(&colly.LimitRule{
+        Parallelism: 100,
+        Delay: delay,
     })
 
     // c.CacheDir = "./cache"
@@ -68,33 +100,35 @@ func main() {
     //     log.Fatal(err)
     // }
     
-    c.SetRequestTimeout(Timeout)
+    c.SetRequestTimeout(timeout)
     // c.SetProxyFunc(proxy)
 
-    d.SetRequestTimeout(Timeout)
+    d.SetRequestTimeout(timeout)
     // d.SetProxyFunc(proxy)
 
-    l.SetRequestTimeout(Timeout)
+    l.SetRequestTimeout(timeout)
     // l.SetProxyFunc(proxy)
 
-    m.SetRequestTimeout(Timeout)
+    m.SetRequestTimeout(timeout)
     // m.SetProxyFunc(proxy)
 
-    l.OnError(func(r *colly.Response, err error) {
-        fmt.Println("List Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err, "\n\n")
-    })
+    if (*Debug) {
+        l.OnError(func(r *colly.Response, err error) {
+            fmt.Println("List Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err, "\n\n")
+        })
 
-    c.OnError(func(r *colly.Response, err error) {
-        fmt.Println("Main Request URL:", r.Request.URL, "failed with response:", r, "Status", r.StatusCode, "\nError:", err, "\n\n")
-    })
+        c.OnError(func(r *colly.Response, err error) {
+            fmt.Println("Main Request URL:", r.Request.URL, "failed with response:", r, "Status", r.StatusCode, "\nError:", err, "\n\n")
+        })
 
-    m.OnError(func(r *colly.Response, err error) {
-        fmt.Println("Merchant Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err, "\n\n")
-    })
+        m.OnError(func(r *colly.Response, err error) {
+            fmt.Println("Merchant Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err, "\n\n")
+        })
 
-    d.OnError(func(r *colly.Response, err error) {
-        fmt.Println("Detail Request URL:", r.Request.URL, "failed with response:", string(r.StatusCode), "\nError:", err, "\n\n")
-    })
+        d.OnError(func(r *colly.Response, err error) {
+            fmt.Println("Detail Request URL:", r.Request.URL, "failed with response:", string(r.StatusCode), "\nError:", err, "\n\n")
+        })
+    }
 
     c.OnHTML("a[class=cat-name]", func(e *colly.HTMLElement) {
         link := e.Request.AbsoluteURL(e.Attr("href"))
@@ -129,27 +163,36 @@ func main() {
     m.OnHTML("body", func(e *colly.HTMLElement) {
         lead := Lead {
             Name: merchantName,
+            Url: e.Request.URL.String(),
         }
 
         e.DOM.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
             href, _ := s.Attr("href")
             text := s.Text()
+            var email string
 
             if (strings.Contains(href, "tel:"))  {
                 phone := strings.Split(href, ":")[1]
                 lead.Phone = strings.TrimSpace(phone)
             }
 
-            mailLink := strings.Contains(href, "mailto:") || strings.Contains(href, "@" + e.Request.URL.Host)
-            mailText := strings.Contains(href, "@" + e.Request.URL.Host) || strings.Contains(text, "@" + e.Request.URL.Host)
-            if (mailLink || mailText)  {
-                email := strings.Split(href, ":")[1]
-                lead.Email = strings.TrimSpace(email)
+            if (strings.Contains(href, "@") || strings.Contains(text, "@")) {
+                email = text
             }
 
+            if (strings.Contains(href, "mailto:"))  {
+                email = strings.Split(href, ":")[1]
+            }
+
+            if (len(email) > 0) {
+                lead.Email = strings.TrimSpace(email)
+            }
         })
 
-        lead.Print()
+        if (!contains(leads, lead)) {
+            leads = append(leads, lead)
+            lead.Print()
+        }
     })
 
     c.Visit(BaseUrl)
