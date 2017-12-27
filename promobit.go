@@ -1,7 +1,6 @@
 package main
 
 import (
-    "fmt"
     "log"
     "time"
     "flag"
@@ -18,17 +17,6 @@ var (
     Timeout = flag.Int("timeout", 1000, "request timeout.")
     Delay = flag.Int("delay", 60, "request delay.")
 )
-
-type Lead struct {
-    Name string
-    Email string
-    Phone string
-    Url string
-}
-
-func (l Lead) Print() {
-    fmt.Printf("%s,%s,%s,%s\n", l.Name, l.Url, l.Phone, l.Email)
-}
 
 func main() {
     flag.Parse()
@@ -81,7 +69,39 @@ func main() {
         }
 
         leads = append(leads, lead)
-        lead.Print()
+        d.Visit(lead.Url)
+    })
+
+    d.OnHTML("body", func(e *colly.HTMLElement) {
+
+        e.DOM.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
+            href, _ := s.Attr("href")
+            text := s.Text()
+            var email string
+
+            if (strings.Contains(href, "tel:"))  {
+                phone := strings.Split(href, ":")[1]
+                lead.Phone = strings.TrimSpace(phone)
+            }
+
+            if (strings.Contains(href, "@") || strings.Contains(text, "@")) {
+                email = text
+            }
+
+            if (strings.Contains(href, "mailto:"))  {
+                email = strings.Split(href, ":")[1]
+            }
+
+            if (len(email) > 0) {
+                lead.Email = strings.TrimSpace(email)
+            }
+        })
+
+        for _, l := range leads {
+            if (l.Url == url) {
+                lead.Print()
+            }
+        }
     })
 
     c.Visit(BaseUrl)
