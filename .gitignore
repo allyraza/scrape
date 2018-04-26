@@ -1,0 +1,7 @@
+# ignore the binaries
+souqr
+
+# ignore the cache dir
+cache
+
+
