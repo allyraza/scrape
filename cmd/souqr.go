@@ -15,8 +15,8 @@ var (
 func main() {
 	var (
 		url         = flag.String("url", "http://uae.souq.com/ae-en/", "url to scrape")
-		tor         = flag.String("tor", "proxy1.ams.local", "tor proxy url")
-		timeout     = flag.Int("timeout", 60, "request timeout")
+		tor         = flag.String("tor", "", "tor proxy url")
+		timeout     = flag.Int("timeout", 60, "request timeout period")
 		parallelism = flag.Int("parallelism", 2, "parallelism for crawler")
 		delay       = flag.Int("delay", 30, "crawler request delay")
 		randomDelay = flag.Int("random-delay", 30, "crawler request delay")
@@ -26,9 +26,11 @@ func main() {
 		userAgent   = flag.String("user-agent", defaultUserAgent, "user agent")
 		debug       = flag.Bool("debug", false, "enable debugging")
 		redisURL    = flag.String("redis-url", ":6379", "redis server url")
+		allowedOnly = flag.Bool("allowed-only", false, "restrict to current url only")
 	)
 	flag.Parse()
 
+	// Start the crawler with configuration
 	fmt.Println("Starting crawler ...")
 
 	c := &souqr.Crawler{
@@ -44,6 +46,7 @@ func main() {
 		UserAgent:   *userAgent,
 		Debug:       *debug,
 		RedisURL:    *redisURL,
+		AllowedOnly: *allowedOnly,
 	}
 
 	c.Start()

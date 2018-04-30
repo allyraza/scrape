@@ -31,57 +31,7 @@ type Crawler struct {
 	Store       redis.Conn
 	RedisURL    string
 	Debug       bool
-}
-
-// SouqAttributes represents product attrs in resp
-type SouqAttributes struct {
-	EAN           string `json:"Alternative_EANs,omitempty"`
-	Brand         string `json:"Brand,omitempty"`
-	Size          string `json:"Size,omitempty"`
-	TargetedGroup string `json:"Targeted_Group,omitempty"`
-}
-
-// SouqProduct represents a product in resp
-type SouqProduct struct {
-	Name           string         `json:"name"`
-	Brand          string         `json:"brand"`
-	Category       string         `json:"category"`
-	Currency       string         `json:"currencyCode"`
-	Discount       float32        `json:"discount"`
-	ID             string         `json:"id"`
-	ItemID         int            `json:"id_item"`
-	Price          float32        `json:"price"`
-	Quantity       int            `json:"quantity"`
-	Variant        string         `json:"variant,omitempty"`
-	Attributes     SouqAttributes `json:"attributes,omitempty"`
-	ParentCategory string         `json:"super_category"`
-}
-
-// SouqPageData represents a PageData map in resp
-type SouqPageData struct {
-	ItemID     int         `json:"ItemIDs,omitempty"`
-	Category   string      `json:"channel_name,eomitempty"`
-	Reviews    int         `json:"item_reviews,omitempty"`
-	Name       string      `json:"item_title,omitempty"`
-	PriceRange string      `json:"price_ranges,omitempty"`
-	EAN        string      `json:"s_ean,omitempty"`
-	SoldOut    string      `json:"sold_out,omitempty"`
-	Rating     int         `json:"s_item_rating_total,omitempty"`
-	AvgRating  string      `json:"s_item_rating_avg,omitempty"`
-	Product    SouqProduct `json:"product"`
-}
-
-// Souq respresents data collected from resp
-type Souq struct {
-	Name        string       `json:"name"`
-	Image       string       `json:"image"`
-	Description string       `json:"description"`
-	URL         string       `json:"url"`
-	Language    string       `json:"s_language,omitempty"`
-	Country     string       `json:"s_country,omitempty"`
-	GTIN        string       `json:"gtin13,omitempty"`
-	Color       string       `json:"color,omitempty"`
-	Data        SouqPageData `json:"Page_Data"`
+	AllowedOnly bool
 }
 
 func (c *Crawler) init() {
@@ -137,6 +87,10 @@ func (c *Crawler) init() {
 }
 
 func (c *Crawler) setProxy() {
+	if c.Tor == "" {
+		return
+	}
+
 	proxyFunc, err := proxy.TorProxySwitcher(c.Tor)
 	if err != nil {
 		log.Printf("PROXY: %v", err)
@@ -146,16 +100,23 @@ func (c *Crawler) setProxy() {
 }
 
 func (c *Crawler) crawl() {
-	c.Pc.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		e.Request.Visit(e.Attr("href"))
-	})
+	if c.AllowedOnly {
+		c.Pc.OnHTML(".pagination-next.goToPage a[href]", func(e *colly.HTMLElement) {
+			e.Request.Visit(e.Attr("href"))
+		})
 
-	c.Pc.OnHTML(".pagination-next a[href]", func(e *colly.HTMLElement) {
-		e.Request.Visit(e.Attr("href"))
-	})
+		c.Pc.OnHTML(".single-item .itemLink.sPrimaryLink", func(e *colly.HTMLElement) {
+			e.Request.Visit(e.Attr("href"))
+		})
+	} else {
 
-	c.Vc.OnHTML(".product_content", c.handleVariant)
-	c.Pc.OnHTML(".product_content", c.handleProduct)
+		c.Pc.OnHTML("a[href]", func(e *colly.HTMLElement) {
+			e.Request.Visit(e.Attr("href"))
+		})
+	}
+
+	c.Vc.OnHTML(".product_content", c.handleHTML)
+	c.Pc.OnHTML(".product_content", c.handleHTML)
 	c.Pc.OnHTML(".size-stand .item-connection:not(.active)", c.visitVariant)
 	c.Pc.OnHTML(".colors-block .has-tip:not(.active)", c.visitVariant)
 }
@@ -168,48 +129,31 @@ func (c *Crawler) visitVariant(el *colly.HTMLElement) {
 	c.Vc.Request("GET", el.ChildAttr("a", "data-url"), nil, el.Response.Ctx, nil)
 }
 
-func (c *Crawler) handleProduct(el *colly.HTMLElement) {
-	res, err := c.parseResponse(el)
-	if err != nil {
-		return
-	}
-	c.Store.Do("LPUSH", "products", res)
-}
-
-func (c *Crawler) handleVariant(el *colly.HTMLElement) {
-	res, err := c.parseResponse(el)
-	if err != nil {
-		return
-	}
-	id := el.Request.Ctx.Get("id")
-	c.Store.Do("HSET", "variants", id, res)
-}
-
-func (c *Crawler) parseResponse(el *colly.HTMLElement) (string, error) {
+func (c *Crawler) handleHTML(el *colly.HTMLElement) {
 	res := bytes.NewReader(el.Response.Body)
 	doc, _ := goquery.NewDocumentFromReader(res)
-	p1 := doc.Find(`script[type="application/ld+json"]`).Text()
+	j1 := doc.Find(`script[type="application/ld+json"]`).Text()
 
-	var p2 string
+	var j2 string
 	doc.Find(`script[type="text/javascript"]`).Each(func(i int, s *goquery.Selection) {
 		str := strings.TrimSpace(s.Text())
 
 		if strings.HasPrefix(str, "var globalBucket") {
-			p2 = str[18:]
+			j2 = str[18:]
 		}
 	})
 
 	s := &Souq{}
 
-	json.Unmarshal([]byte(p1), &s)
-	json.Unmarshal([]byte(p2), &s)
+	json.Unmarshal([]byte(j1), &s)
+	json.Unmarshal([]byte(j2), &s)
 
-	jsonb, err := json.Marshal(s)
+	p, err := json.Marshal(s)
 	if err != nil {
 		log.Printf("JSON: %v", err)
 	}
 
-	return string(jsonb), err
+	c.Store.Do("LPUSH", "products", string(p))
 }
 
 func (c *Crawler) setTimeout() {
@@ -219,7 +163,7 @@ func (c *Crawler) setTimeout() {
 // Start starts the crawler
 func (c *Crawler) Start() {
 	c.init()
-	// c.setProxy()
+	c.setProxy()
 	c.setTimeout()
 
 	c.Pc.Limit(&colly.LimitRule{

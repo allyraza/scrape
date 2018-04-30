@@ -1,5 +1,7 @@
 # ignore the binaries
 souqr
+dump
+feed.xml
 
 # ignore the cache dir
 cache
