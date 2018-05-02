@@ -3,8 +3,10 @@ package souqr
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/allyraza/souqr/proxy"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gocolly/colly"
+	//	"github.com/gocolly/redisstorage"
 )
 
 // Crawler wrapper around colly
@@ -32,6 +35,8 @@ type Crawler struct {
 	RedisURL    string
 	Debug       bool
 	AllowedOnly bool
+	PerPage     int
+	Stats       int
 }
 
 func (c *Crawler) init() {
@@ -41,6 +46,7 @@ func (c *Crawler) init() {
 	}
 
 	c.Store = rc
+	c.Stats = 0
 
 	c.Pc = colly.NewCollector(
 		// cache directory
@@ -61,15 +67,14 @@ func (c *Crawler) init() {
 			log.Printf("RESPONSE: %v", r.StatusCode)
 		})
 	}
-
+	//
 	// storage := &redisstorage.Storage{
 	// 	Address: c.RedisURL,
 	// 	Prefix:  "souqr_",
 	// }
 	// defer storage.Client.Close()
 	//
-	// err = c.Pc.SetStorage(storage)
-	// if err != nil {
+	// if err = c.Pc.SetStorage(storage); err != nil {
 	// 	panic(err)
 	// }
 	//
@@ -80,7 +85,7 @@ func (c *Crawler) init() {
 	c.Pc.OnError(func(r *colly.Response, err error) {
 		log.Printf(`
 		URL: 		  %v
-		RESPONSE: %v
+		RESPONSE: %#v
 		Error:    %v`,
 			r.Request.URL, r, err)
 	})
@@ -101,15 +106,27 @@ func (c *Crawler) setProxy() {
 
 func (c *Crawler) crawl() {
 	if c.AllowedOnly {
-		c.Pc.OnHTML(".pagination-next.goToPage a[href]", func(e *colly.HTMLElement) {
-			e.Request.Visit(e.Attr("href"))
+		c.Pc.OnHTML(`script[type="application/ld+json"]`, func(e *colly.HTMLElement) {
+			blob := strings.TrimSpace(e.Text)
+
+			schema := &Category{}
+			json.Unmarshal([]byte(blob), &schema)
+
+			for _, v := range schema.Items {
+				c.Pc.Visit(v.URL)
+			}
+
+			for p := 1; p <= schema.Total/c.PerPage; p++ {
+				q := e.Request.URL.Query()
+				q.Set("page", strconv.Itoa(p))
+				q.Set("section", "2")
+				e.Request.URL.RawQuery = q.Encode()
+
+				c.Pc.Visit(e.Request.URL.String())
+			}
 		})
 
-		c.Pc.OnHTML(".single-item .itemLink.sPrimaryLink", func(e *colly.HTMLElement) {
-			e.Request.Visit(e.Attr("href"))
-		})
 	} else {
-
 		c.Pc.OnHTML("a[href]", func(e *colly.HTMLElement) {
 			e.Request.Visit(e.Attr("href"))
 		})
@@ -153,11 +170,17 @@ func (c *Crawler) handleHTML(el *colly.HTMLElement) {
 		log.Printf("JSON: %v", err)
 	}
 
+	c.Stats = c.Stats + 1
+
 	c.Store.Do("LPUSH", "products", string(p))
 }
 
 func (c *Crawler) setTimeout() {
 	c.Pc.SetRequestTimeout(c.Timeout)
+}
+
+func (c *Crawler) printStats() {
+	fmt.Printf("\nTOTAL: %v\n", c.Stats)
 }
 
 // Start starts the crawler
@@ -176,4 +199,6 @@ func (c *Crawler) Start() {
 
 	c.crawl()
 	c.Pc.Visit(c.URL)
+
+	c.printStats()
 }

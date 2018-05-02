@@ -18,6 +18,7 @@ func main() {
 		tor         = flag.String("tor", "", "tor proxy url")
 		timeout     = flag.Int("timeout", 60, "request timeout period")
 		parallelism = flag.Int("parallelism", 2, "parallelism for crawler")
+		perPage     = flag.Int("per-page", 30, "items per page")
 		delay       = flag.Int("delay", 30, "crawler request delay")
 		randomDelay = flag.Int("random-delay", 30, "crawler request delay")
 		cacheDir    = flag.String("cache", "cache", "cache directory to save cache")
@@ -47,6 +48,7 @@ func main() {
 		Debug:       *debug,
 		RedisURL:    *redisURL,
 		AllowedOnly: *allowedOnly,
+		PerPage:     *perPage,
 	}
 
 	c.Start()

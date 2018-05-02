@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"log"
@@ -74,11 +75,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	xml := &XMLWriter{
+	xmlw := &XMLWriter{
 		File: file,
 	}
 
-	fmt.Fprintf(xml.File, "<products>")
+	fmt.Fprintf(xmlw.File, xml.Header+"<products>")
 
 	conn, err := redis.Dial("tcp", *redisURL)
 	if err != nil {
@@ -100,8 +101,8 @@ func main() {
 			break
 		}
 
-		xml.Write(res)
+		xmlw.Write(res)
 	}
 
-	fmt.Fprintf(xml.File, "</products>")
+	fmt.Fprintf(xmlw.File, "</products>")
 }

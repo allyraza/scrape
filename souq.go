@@ -50,3 +50,14 @@ type Souq struct {
 	Color       string   `json:"color"`
 	PageData    PageData `json:"Page_Data"`
 }
+
+// Category schema for search page
+type Category struct {
+	Items []*Item `json:"itemListElement"`
+	Total int     `json:"numberOfItems"`
+}
+
+// Item is corresponds to a search item
+type Item struct {
+	URL string `json:"url"`
+}

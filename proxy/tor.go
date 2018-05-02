@@ -14,16 +14,9 @@ var (
 	TorURL = "http://proxy01.ams.local/ip"
 )
 
-// Proxy represents a response returned by tor service
-type Proxy struct {
-	ip       string
-	provider string
-}
-
 // Tor @todo
 type Tor struct {
 	Endpoint string
-	URL      *url.URL
 }
 
 // GetProxy fetches a proxy and returns
@@ -34,16 +27,16 @@ func (t *Tor) GetProxy(_ *http.Request) (*url.URL, error) {
 		return nil, err
 	}
 
-	p := &Proxy{}
-	json.NewDecoder(r.Body).Decode(&p)
+	schema := map[string]string{}
+	json.NewDecoder(r.Body).Decode(&schema)
 
-	u, err := url.Parse(p.ip)
+	u, err := url.Parse(schema["ip"])
 	if err != nil {
 		log.Printf("PROXY: %v", err)
 		return nil, err
 	}
 
-	t.URL = u
+	u.Scheme = "http"
 
 	return u, nil
 }
