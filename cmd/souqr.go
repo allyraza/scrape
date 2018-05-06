@@ -15,12 +15,14 @@ var (
 func main() {
 	var (
 		url         = flag.String("url", "http://uae.souq.com/ae-en/", "url to scrape")
+		proxy       = flag.String("proxy", "", "proxy url")
 		tor         = flag.String("tor", "", "tor proxy url")
+		torControl  = flag.String("tor-control", "", "tor control url")
 		timeout     = flag.Int("timeout", 60, "request timeout period")
 		parallelism = flag.Int("parallelism", 2, "parallelism for crawler")
 		perPage     = flag.Int("per-page", 30, "items per page")
 		delay       = flag.Int("delay", 30, "crawler request delay")
-		randomDelay = flag.Int("random-delay", 30, "crawler request delay")
+		randomDelay = flag.Int("random-delay", 60, "crawler request delay")
 		cacheDir    = flag.String("cache", "cache", "cache directory to save cache")
 		allowed     = flag.String("allowed", "uae.souq.com", "allowed domains")
 		filters     = flag.String("filters", "uae\\.souq\\.com/(|ae-en.+)$", "url filters")
@@ -36,7 +38,9 @@ func main() {
 
 	c := &souqr.Crawler{
 		URL:         *url,
+		Proxy:       *proxy,
 		Tor:         *tor,
+		TorControl:  *torControl,
 		Timeout:     time.Duration(*timeout) * time.Second,
 		Parallelism: *parallelism,
 		Delay:       time.Duration(*delay) * time.Second,

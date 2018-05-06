@@ -14,6 +14,7 @@ require (
 	"github.com/golang/protobuf" v1.0.0
 	"github.com/kennygrant/sanitize" v1.2.3
 	"github.com/saintfish/chardet" v0.0.0-20120816061221-3af4cd4741ca
+	"github.com/sycamoreone/orc" v0.0.0-20150204213357-1627eaec2699
 	"github.com/temoto/robotstxt" v0.0.0-20170603013557-9e4646fa7053
 	"golang.org/x/net" v0.0.0-20180420171651-5f9ae10d9af5
 	"golang.org/x/text" v0.0.0-20171214130843-f21a4dfb5e38

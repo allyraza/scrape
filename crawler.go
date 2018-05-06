@@ -11,16 +11,19 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/allyraza/souqr/proxy"
+	tor "github.com/allyraza/souqr/proxy"
 	"github.com/garyburd/redigo/redis"
 	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/proxy"
 	//	"github.com/gocolly/redisstorage"
 )
 
 // Crawler wrapper around colly
 type Crawler struct {
 	URL         string
+	Proxy       string
 	Tor         string
+	TorControl  string
 	Pc          *colly.Collector
 	Vc          *colly.Collector
 	Timeout     time.Duration
@@ -67,7 +70,7 @@ func (c *Crawler) init() {
 			log.Printf("RESPONSE: %v", r.StatusCode)
 		})
 	}
-	//
+
 	// storage := &redisstorage.Storage{
 	// 	Address: c.RedisURL,
 	// 	Prefix:  "souqr_",
@@ -92,16 +95,22 @@ func (c *Crawler) init() {
 }
 
 func (c *Crawler) setProxy() {
-	if c.Tor == "" {
-		return
+	if c.Tor != "" {
+		pf, err := tor.TorProxySwitcher(c.Tor, c.TorControl)
+		if err != nil {
+			log.Printf("TOR: %v", err)
+		}
+		c.Pc.SetProxyFunc(pf)
 	}
 
-	proxyFunc, err := proxy.TorProxySwitcher(c.Tor)
-	if err != nil {
-		log.Printf("PROXY: %v", err)
+	if c.Proxy != "" {
+		proxies := strings.Split(c.Proxy, ",")
+		pf, err := proxy.RoundRobinProxySwitcher(proxies...)
+		if err != nil {
+			log.Printf("Proxy: %v", err)
+		}
+		c.Pc.SetProxyFunc(pf)
 	}
-
-	c.Pc.SetProxyFunc(proxyFunc)
 }
 
 func (c *Crawler) crawl() {

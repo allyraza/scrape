@@ -1,7 +1,8 @@
 # ignore the binaries
 souqr
 dump
-feed.xml
+check-ip
+feeds
 
 # ignore the cache dir
 cache
