@@ -24,6 +24,7 @@ type Crawler struct {
 	Proxy       string
 	Tor         string
 	TorControl  string
+	Cc          *colly.Collector
 	Pc          *colly.Collector
 	Vc          *colly.Collector
 	Timeout     time.Duration
@@ -37,7 +38,6 @@ type Crawler struct {
 	Store       redis.Conn
 	RedisURL    string
 	Debug       bool
-	AllowedOnly bool
 	PerPage     int
 	Stats       int
 }
@@ -51,7 +51,7 @@ func (c *Crawler) init() {
 	c.Store = rc
 	c.Stats = 0
 
-	c.Pc = colly.NewCollector(
+	c.Cc = colly.NewCollector(
 		// cache directory
 		colly.CacheDir(c.CacheDir),
 		// url filters
@@ -62,11 +62,28 @@ func (c *Crawler) init() {
 		colly.UserAgent(c.UserAgent),
 	)
 
+	c.Pc = c.Cc.Clone()
+	c.Vc = c.Cc.Clone()
+
 	if c.Debug {
+		c.Cc.OnRequest(func(r *colly.Request) {
+			log.Printf("REQUEST: %v", r.URL.String())
+		})
+		c.Cc.OnResponse(func(r *colly.Response) {
+			log.Printf("RESPONSE: %v", r.StatusCode)
+		})
+
 		c.Pc.OnRequest(func(r *colly.Request) {
 			log.Printf("REQUEST: %v", r.URL.String())
 		})
 		c.Pc.OnResponse(func(r *colly.Response) {
+			log.Printf("RESPONSE: %v", r.StatusCode)
+		})
+
+		c.Vc.OnRequest(func(r *colly.Request) {
+			log.Printf("REQUEST: %v", r.URL.String())
+		})
+		c.Vc.OnResponse(func(r *colly.Response) {
 			log.Printf("RESPONSE: %v", r.StatusCode)
 		})
 	}
@@ -85,7 +102,7 @@ func (c *Crawler) init() {
 	// 	log.Fatal(err)
 	// }
 
-	c.Pc.OnError(func(r *colly.Response, err error) {
+	c.Cc.OnError(func(r *colly.Response, err error) {
 		log.Printf(`
 		URL: 		  %v
 		RESPONSE: %#v
@@ -100,54 +117,48 @@ func (c *Crawler) setProxy() {
 		if err != nil {
 			log.Printf("TOR: %v", err)
 		}
+
+		c.Cc.SetProxyFunc(pf)
 		c.Pc.SetProxyFunc(pf)
+		c.Vc.SetProxyFunc(pf)
 	}
 
 	if c.Proxy != "" {
 		proxies := strings.Split(c.Proxy, ",")
+
 		pf, err := proxy.RoundRobinProxySwitcher(proxies...)
 		if err != nil {
 			log.Printf("Proxy: %v", err)
 		}
+
+		c.Cc.SetProxyFunc(pf)
 		c.Pc.SetProxyFunc(pf)
+		c.Vc.SetProxyFunc(pf)
 	}
 }
 
 func (c *Crawler) crawl() {
-	if c.AllowedOnly {
-		c.Pc.OnHTML(`script[type="application/ld+json"]`, func(e *colly.HTMLElement) {
-			blob := strings.TrimSpace(e.Text)
+	c.Cc.OnHTML(".side-nav li > a[href]", func(e *colly.HTMLElement) {
+		exists, err := redis.Bool(c.Store.Do("SISMEMBER", "categories", e.Attr("href")))
+		if err != nil {
+			log.Println(err)
+		}
 
-			schema := &Category{}
-			json.Unmarshal([]byte(blob), &schema)
+		if !exists {
+			log.Println(e.Attr("href"))
+			c.Cc.Visit(e.Attr("href"))
+			c.Store.Do("SADD", "categories", e.Attr("href"))
+		}
+	})
 
-			for _, v := range schema.Items {
-				c.Pc.Visit(v.URL)
-			}
-
-			for p := 1; p <= schema.Total/c.PerPage; p++ {
-				q := e.Request.URL.Query()
-				q.Set("page", strconv.Itoa(p))
-				q.Set("section", "2")
-				e.Request.URL.RawQuery = q.Encode()
-
-				c.Pc.Visit(e.Request.URL.String())
-			}
-		})
-
-	} else {
-		c.Pc.OnHTML("a[href]", func(e *colly.HTMLElement) {
-			e.Request.Visit(e.Attr("href"))
-		})
-	}
-
-	c.Vc.OnHTML(".product_content", c.handleHTML)
-	c.Pc.OnHTML(".product_content", c.handleHTML)
-	c.Pc.OnHTML(".size-stand .item-connection:not(.active)", c.visitVariant)
-	c.Pc.OnHTML(".colors-block .has-tip:not(.active)", c.visitVariant)
+	c.Cc.OnHTML(`script[type="application/ld+json"]`, c.categoryHandler)
+	c.Vc.OnHTML(".product_content", c.detailHandler)
+	c.Pc.OnHTML(".product_content", c.detailHandler)
+	c.Pc.OnHTML(".size-stand .item-connection:not(.active)", c.variantVisitor)
+	c.Pc.OnHTML(".colors-block .has-tip:not(.active)", c.variantVisitor)
 }
 
-func (c *Crawler) visitVariant(el *colly.HTMLElement) {
+func (c *Crawler) variantVisitor(el *colly.HTMLElement) {
 	url := el.Request.URL.String()
 	parts := strings.Split((strings.Split(url, "/"))[4], "-")
 	el.Response.Ctx.Put("id", parts[len(parts)-1])
@@ -155,7 +166,33 @@ func (c *Crawler) visitVariant(el *colly.HTMLElement) {
 	c.Vc.Request("GET", el.ChildAttr("a", "data-url"), nil, el.Response.Ctx, nil)
 }
 
-func (c *Crawler) handleHTML(el *colly.HTMLElement) {
+func (c *Crawler) categoryHandler(e *colly.HTMLElement) {
+	blob := strings.TrimSpace(e.Text)
+
+	schema := &Category{}
+	json.Unmarshal([]byte(blob), &schema)
+
+	for _, v := range schema.Items {
+		c.Pc.Visit(v.URL)
+	}
+
+	totalPages := schema.Total / c.PerPage
+
+	for p := 1; p <= totalPages; p++ {
+		q := e.Request.URL.Query()
+		q.Set("page", strconv.Itoa(p))
+		q.Set("section", "2")
+		e.Request.URL.RawQuery = q.Encode()
+
+		if q.Get("redirectup") == "1" {
+			break
+		}
+
+		c.Cc.Visit(e.Request.URL.String())
+	}
+}
+
+func (c *Crawler) detailHandler(el *colly.HTMLElement) {
 	res := bytes.NewReader(el.Response.Body)
 	doc, _ := goquery.NewDocumentFromReader(res)
 	j1 := doc.Find(`script[type="application/ld+json"]`).Text()
@@ -180,16 +217,19 @@ func (c *Crawler) handleHTML(el *colly.HTMLElement) {
 	}
 
 	c.Stats = c.Stats + 1
+	category := strings.Join(strings.Fields(s.PageData.Product.Category), "_")
+	category = strings.ToLower(strings.Replace(category, "&", "and", -1))
 
-	c.Store.Do("LPUSH", "products", string(p))
+	c.Store.Do("LPUSH", category, string(p))
+	c.Store.Do("SET", "current", category)
+
+	fmt.Printf("\rProducts: %v", c.Stats)
 }
 
 func (c *Crawler) setTimeout() {
+	c.Cc.SetRequestTimeout(c.Timeout)
 	c.Pc.SetRequestTimeout(c.Timeout)
-}
-
-func (c *Crawler) printStats() {
-	fmt.Printf("\nTOTAL: %v\n", c.Stats)
+	c.Vc.SetRequestTimeout(c.Timeout)
 }
 
 // Start starts the crawler
@@ -198,16 +238,24 @@ func (c *Crawler) Start() {
 	c.setProxy()
 	c.setTimeout()
 
+	c.Cc.Limit(&colly.LimitRule{
+		Parallelism: c.Parallelism,
+		RandomDelay: c.RandomDelay,
+		Delay:       c.Delay,
+	})
+
 	c.Pc.Limit(&colly.LimitRule{
 		Parallelism: c.Parallelism,
 		RandomDelay: c.RandomDelay,
 		Delay:       c.Delay,
 	})
 
-	c.Vc = c.Pc.Clone()
+	c.Vc.Limit(&colly.LimitRule{
+		Parallelism: c.Parallelism,
+		RandomDelay: c.RandomDelay,
+		Delay:       c.Delay,
+	})
 
 	c.crawl()
-	c.Pc.Visit(c.URL)
-
-	c.printStats()
+	c.Cc.Visit(c.URL)
 }

@@ -20,7 +20,7 @@ func main() {
 		torControl  = flag.String("tor-control", "", "tor control url")
 		timeout     = flag.Int("timeout", 60, "request timeout period")
 		parallelism = flag.Int("parallelism", 2, "parallelism for crawler")
-		perPage     = flag.Int("per-page", 30, "items per page")
+		perPage     = flag.Int("per-page", 60, "items per page")
 		delay       = flag.Int("delay", 30, "crawler request delay")
 		randomDelay = flag.Int("random-delay", 60, "crawler request delay")
 		cacheDir    = flag.String("cache", "cache", "cache directory to save cache")
@@ -29,7 +29,6 @@ func main() {
 		userAgent   = flag.String("user-agent", defaultUserAgent, "user agent")
 		debug       = flag.Bool("debug", false, "enable debugging")
 		redisURL    = flag.String("redis-url", ":6379", "redis server url")
-		allowedOnly = flag.Bool("allowed-only", false, "restrict to current url only")
 	)
 	flag.Parse()
 
@@ -51,7 +50,6 @@ func main() {
 		UserAgent:   *userAgent,
 		Debug:       *debug,
 		RedisURL:    *redisURL,
-		AllowedOnly: *allowedOnly,
 		PerPage:     *perPage,
 	}
 

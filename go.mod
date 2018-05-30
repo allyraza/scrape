@@ -6,6 +6,7 @@ require (
 	"github.com/antchfx/htmlquery" v0.0.0-20171205025447-9f7717ac9bac
 	"github.com/antchfx/xmlquery" v0.0.0-20171205024734-f3845cf37231
 	"github.com/antchfx/xpath" v0.0.0-20180224014921-da6624a57bff
+	"github.com/aws/aws-sdk-go" v1.13.47
 	"github.com/garyburd/redigo" v1.6.0
 	"github.com/go-redis/redis" v0.0.0-20180417061816-9ccc23344a52
 	"github.com/gobwas/glob" v0.2.3

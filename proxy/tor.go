@@ -9,30 +9,25 @@ import (
 	"github.com/sycamoreone/orc/control"
 )
 
-// Tor @todo
+// Tor holds tor address and a conn to tor control
 type Tor struct {
-	Server  string
-	Control string
+	Address string
+	Conn    *control.Conn
 }
 
 // GetProxy fetches a proxy and returns
 func (t *Tor) GetProxy(_ *http.Request) (*url.URL, error) {
-	c, err := control.Dial(t.Control)
+	err := t.Conn.Auth("")
 	if err != nil {
 		log.Println(err)
 	}
 
-	err = c.Auth("")
+	err = t.Conn.Signal(control.SignalNewNym)
 	if err != nil {
 		log.Println(err)
 	}
 
-	err = c.Signal(control.SignalNewNym)
-	if err != nil {
-		log.Println(err)
-	}
-
-	u, err := url.Parse(t.Server)
+	u, err := url.Parse(t.Address)
 	if err != nil {
 		log.Printf("PROXY: %v", err)
 		return nil, err
@@ -43,7 +38,12 @@ func (t *Tor) GetProxy(_ *http.Request) (*url.URL, error) {
 
 // TorProxySwitcher creates a proxy switcher func which fetches
 // ProxyURLs on every request.
-func TorProxySwitcher(server string, control string) (colly.ProxyFunc, error) {
-	s := &Tor{Server: server, Control: control}
+func TorProxySwitcher(address string, controlAddress string) (colly.ProxyFunc, error) {
+	c, err := control.Dial(controlAddress)
+	if err != nil {
+		log.Println(err)
+	}
+
+	s := &Tor{Address: address, Conn: c}
 	return s.GetProxy, nil
 }
