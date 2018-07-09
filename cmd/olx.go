@@ -14,7 +14,7 @@ var (
 
 func main() {
 	var (
-		url         = flag.String("url", "http://uae.souq.com/ae-en/", "url to scrape")
+		url         = flag.String("url", "", "url to scrape")
 		proxy       = flag.String("proxy", "", "proxy url")
 		tor         = flag.String("tor", "", "tor proxy url")
 		torControl  = flag.String("tor-control", "", "tor control url")
@@ -46,7 +46,7 @@ func main() {
 		RandomDelay: time.Duration(*randomDelay) * time.Second,
 		CacheDir:    *cacheDir,
 		Allowed:     *allowed,
-		Filters:     *filters,
+		URLFilters:  *filters,
 		UserAgent:   *userAgent,
 		Debug:       *debug,
 		RedisURL:    *redisURL,
