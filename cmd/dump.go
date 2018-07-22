@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/allyraza/souqr"
+	"github.com/allyraza/scrape"
 	"github.com/garyburd/redigo/redis"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -95,7 +95,7 @@ func syncRedis(config *Config) {
 			}
 
 			Dump(k, config)
-			Upload(k+".xml", config)
+			Upload(fmt.Sprintf("%s.xml", k), config)
 		}
 	}
 }
@@ -161,7 +161,7 @@ func Fetch(config *Config) (string, []string) {
 
 // Dump writes a given bucket to a xml file
 func Dump(bucket string, config *Config) {
-	filename := filepath.Join(config.Dir, bucket+".xml")
+	filename := filepath.Join(config.Dir, fmt.Sprintf("%s.xml", bucket))
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -193,7 +193,7 @@ func Dump(bucket string, config *Config) {
 
 // Write writes bytes to given file
 func Write(file *os.File, p []byte) error {
-	s := &souqr.Souq{}
+	s := &scrape.Souq{}
 
 	err := json.Unmarshal(p, &s)
 	if err != nil {
@@ -211,7 +211,7 @@ func Write(file *os.File, p []byte) error {
 		s.PageData.Product.Category,
 		s.PageData.Product.ParentCategory)
 
-	prd := &souqr.Product{
+	prd := &scrape.Product{
 		ID:           s.PageData.ItemID,
 		Name:         s.Name,
 		CategoryPath: categoryPath,
