@@ -1,4 +1,4 @@
-package souqr
+package scrape
 
 import (
 	"encoding/xml"
