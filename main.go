@@ -6,17 +6,16 @@ import (
 	"github.com/gocolly/colly"
 	"io/ioutil"
 	"log"
+
 	"strings"
 )
 
-type Filter []string
-
 type Item struct {
-	Name           string            `json:"name"`
-	SubCategory    string            `json:"sub_category"`
-	SubSubCategory string            `json:"sub_sub_category"`
-	URL            string            `json:"url"`
-	Filters        map[string]Filter `json:"filters"`
+	Name           string              `json:"name"`
+	SubCategory    string              `json:"sub_category"`
+	SubSubCategory string              `json:"sub_sub_category"`
+	URL            string              `json:"url"`
+	Filters        map[string][]string `json:"filters"`
 }
 
 func (i Item) String() string {
@@ -30,7 +29,7 @@ func (i Item) String() string {
 func main() {
 	fmt.Println("beslist.nl")
 
-	items := []Item{}
+	items := map[string]Item{}
 
 	c := colly.NewCollector(
 		colly.CacheDir("./cache"))
@@ -44,6 +43,26 @@ func main() {
 	fc := colly.NewCollector(
 		colly.CacheDir("./cache"))
 
+	fc.OnHTML("details.columnsearch__accordion", func(el *colly.HTMLElement) {
+
+		url := el.Request.URL.String()
+		title := el.ChildText("summary > em")
+
+		if title == "" {
+			return
+		}
+
+		filters := []string{}
+		el.ForEach("ul label", func(_ int, e *colly.HTMLElement) {
+			filters = append(filters, e.Attr("title"))
+		})
+
+		item := items[url]
+		item.Filters[title] = filters
+
+		items[url] = item
+	})
+
 	// Category
 	c.OnHTML(".categories-dropdown__menu .categories-dropdown__link", func(el *colly.HTMLElement) {
 		name := strings.TrimSpace(el.Text)
@@ -52,14 +71,19 @@ func main() {
 			url = el.Attr("href")
 		}
 		url = el.Request.AbsoluteURL(url)
+
 		item := Item{
-			Name: name,
-			URL:  url,
+			Name:    name,
+			URL:     url,
+			Filters: map[string][]string{},
 		}
-		fetchFilter(fc, url, &item)
-		items = append(items, item)
-		fmt.Print(".")
+
+		items[url] = item
+
+		fc.Visit(url)
 		sc.Visit(url)
+
+		fmt.Printf(".")
 	})
 
 	// Sub Category
@@ -74,10 +98,11 @@ func main() {
 				SubCategory:    subCategory,
 				SubSubCategory: "",
 				URL:            url,
+				Filters:        map[string][]string{},
 			}
-			fetchFilter(fc, url, &item)
-			items = append(items, item)
-			fmt.Print(".")
+			items[url] = item
+
+			fc.Visit(url)
 			ssc.Visit(url)
 		})
 	})
@@ -95,10 +120,12 @@ func main() {
 				SubCategory:    subCategory,
 				SubSubCategory: subSubCategory,
 				URL:            url,
+				Filters:        map[string][]string{},
 			}
-			fetchFilter(fc, url, &item)
-			items = append(items, item)
-			fmt.Print(".")
+
+			items[url] = item
+
+			fc.Visit(url)
 		})
 	})
 
@@ -115,20 +142,5 @@ func main() {
 	}
 
 	fmt.Print("done!\n")
-}
 
-func fetchFilter(fc *colly.Collector, url string, item *Item) error {
-	fc.OnHTML(".columnsearch__accordion.facet", func(el *colly.HTMLElement) {
-		title := el.ChildText("summary > em")
-		filters := []string{}
-		el.ForEach("ul label", func(_ int, e *colly.HTMLElement) {
-			filters = append(filters, e.Attr("title"))
-		})
-		item.Filters = map[string]Filter{}
-		item.Filters[title] = filters
-	})
-
-	fc.Visit(url)
-
-	return nil
 }
